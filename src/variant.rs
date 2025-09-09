@@ -31,6 +31,7 @@ use single_byte::*;
 use utf_16::*;
 use utf_8::*;
 use x_user_defined::*;
+use crate::tcvn3::*;
 
 pub enum VariantDecoder {
     SingleByte(SingleByteDecoder),
@@ -44,6 +45,7 @@ pub enum VariantDecoder {
     Replacement(ReplacementDecoder),
     UserDefined(UserDefinedDecoder),
     Utf16(Utf16Decoder),
+    Tcvn3(Tcvn3Decoder)
 }
 
 impl VariantDecoder {
@@ -60,6 +62,7 @@ impl VariantDecoder {
             VariantDecoder::Replacement(ref v) => v.max_utf16_buffer_length(byte_length),
             VariantDecoder::UserDefined(ref v) => v.max_utf16_buffer_length(byte_length),
             VariantDecoder::Utf16(ref v) => v.max_utf16_buffer_length(byte_length),
+            VariantDecoder::Tcvn3(ref v) => v.max_utf16_buffer_length(byte_length),
         }
     }
 
@@ -98,6 +101,9 @@ impl VariantDecoder {
             VariantDecoder::Utf16(ref v) => {
                 v.max_utf8_buffer_length_without_replacement(byte_length)
             }
+            VariantDecoder::Tcvn3(ref v) => {
+                v.max_utf8_buffer_length_without_replacement(byte_length)
+            }
         }
     }
 
@@ -114,6 +120,7 @@ impl VariantDecoder {
             VariantDecoder::Replacement(ref v) => v.max_utf8_buffer_length(byte_length),
             VariantDecoder::UserDefined(ref v) => v.max_utf8_buffer_length(byte_length),
             VariantDecoder::Utf16(ref v) => v.max_utf8_buffer_length(byte_length),
+            VariantDecoder::Tcvn3(ref v) => v.max_utf8_buffer_length(byte_length),
         }
     }
 
@@ -135,6 +142,7 @@ impl VariantDecoder {
             VariantDecoder::Replacement(ref mut v) => v.decode_to_utf16_raw(src, dst, last),
             VariantDecoder::UserDefined(ref mut v) => v.decode_to_utf16_raw(src, dst, last),
             VariantDecoder::Utf16(ref mut v) => v.decode_to_utf16_raw(src, dst, last),
+            VariantDecoder::Tcvn3(ref mut v) => v.decode_to_utf16_raw(src, dst, last),
         }
     }
 
@@ -156,6 +164,7 @@ impl VariantDecoder {
             VariantDecoder::Replacement(ref mut v) => v.decode_to_utf8_raw(src, dst, last),
             VariantDecoder::UserDefined(ref mut v) => v.decode_to_utf8_raw(src, dst, last),
             VariantDecoder::Utf16(ref mut v) => v.decode_to_utf8_raw(src, dst, last),
+            VariantDecoder::Tcvn3(ref mut v) => v.decode_to_utf8_raw(src, dst, last),
         }
     }
 
@@ -204,6 +213,11 @@ impl VariantDecoder {
             VariantDecoder::Replacement(_) | VariantDecoder::Utf16(_) => {
                 return None;
             }
+            VariantDecoder::Tcvn3(ref v) => {
+                if !v.in_neutral_state() {
+                    return None;
+                }
+            }
         };
         Some(Encoding::ascii_valid_up_to(buffer))
     }
@@ -225,6 +239,7 @@ impl VariantEncoder {
     pub fn has_pending_state(&self) -> bool {
         match *self {
             VariantEncoder::Iso2022Jp(ref v) => v.has_pending_state(),
+            VariantEncoder::Tcvn3(_) => false,
             _ => false,
         }
     }
@@ -259,6 +274,9 @@ impl VariantEncoder {
             }
             VariantEncoder::UserDefined(ref v) => {
                 v.max_buffer_length_from_utf16_without_replacement(u16_length)
+            }
+            VariantEncoder::Tcvn3(ref v) => {
+                v.max_buffer_length_from_utf16_if_no_unmappables(u16_length)
             }
         }
     }
@@ -295,6 +313,9 @@ impl VariantEncoder {
             VariantEncoder::UserDefined(ref v) => {
                 v.max_buffer_length_from_utf8_without_replacement(byte_length)
             }
+            VariantEncoder::Tcvn3(ref v) => {
+                v.max_buffer_length_from_utf8_if_no_unmappables(byte_length)
+            }
         }
     }
 
@@ -314,6 +335,7 @@ impl VariantEncoder {
             VariantEncoder::ShiftJis(ref mut v) => v.encode_from_utf16_raw(src, dst, last),
             VariantEncoder::EucKr(ref mut v) => v.encode_from_utf16_raw(src, dst, last),
             VariantEncoder::UserDefined(ref mut v) => v.encode_from_utf16_raw(src, dst, last),
+            VariantEncoder::Tcvn3(ref mut v) => v.encode_from_utf16_raw(src, dst, last),
         }
     }
 
@@ -333,6 +355,7 @@ impl VariantEncoder {
             VariantEncoder::ShiftJis(ref mut v) => v.encode_from_utf8_raw(src, dst, last),
             VariantEncoder::EucKr(ref mut v) => v.encode_from_utf8_raw(src, dst, last),
             VariantEncoder::UserDefined(ref mut v) => v.encode_from_utf8_raw(src, dst, last),
+            VariantEncoder::Tcvn3(ref mut v) => v.encode_from_utf8_raw(src, dst, last),
         }
     }
 }
@@ -369,6 +392,7 @@ impl VariantEncoding {
             VariantEncoding::UserDefined => UserDefinedDecoder::new(),
             VariantEncoding::Utf16Be => Utf16Decoder::new(true),
             VariantEncoding::Utf16Le => Utf16Decoder::new(false),
+            VariantEncoding::Tcvn3 => Tcvn3Decoder::new(),
         }
     }
 
@@ -386,6 +410,7 @@ impl VariantEncoding {
             VariantEncoding::ShiftJis => ShiftJisEncoder::new(encoding),
             VariantEncoding::EucKr => EucKrEncoder::new(encoding),
             VariantEncoding::UserDefined => UserDefinedEncoder::new(encoding),
+            VariantEncoding::Tcvn3 => Tcvn3Encoder::new(encoding),
             VariantEncoding::Utf16Be | VariantEncoding::Replacement | VariantEncoding::Utf16Le => {
                 unreachable!()
             }
@@ -395,6 +420,7 @@ impl VariantEncoding {
     pub fn is_single_byte(&self) -> bool {
         match *self {
             VariantEncoding::SingleByte(_, _, _, _) | VariantEncoding::UserDefined => true,
+            VariantEncoding::Tcvn3 => false,
             _ => false,
         }
     }
