@@ -2437,6 +2437,7 @@ static LABELS_SORTED: [&'static str; 228] = [
     "unicode-1-1-utf-8",
     "csisolatincyrillic",
     "cseucpkdfmtjapanese",
+    "tcvn3",
 ];
 
 static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 228] = [
@@ -2668,6 +2669,7 @@ static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 228] = [
     &UTF_8_INIT,
     &ISO_8859_5_INIT,
     &EUC_JP_INIT,
+    &TCVN3_INIT,
 ];
 
 // END GENERATED CODE
