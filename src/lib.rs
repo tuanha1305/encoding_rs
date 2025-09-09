@@ -2181,9 +2181,9 @@ pub static TCVN3_INIT: Encoding = Encoding {
     name: "tcvn3",
     variant: VariantEncoding::SingleByte(
         &data::SINGLE_BYTE_DATA.tcvn3, 
-        0, 
-        0, 
-        0
+        0x1EB6, 
+        70, 
+        2
     ),
 };
 
