@@ -53,7 +53,8 @@ static ENCODINGS: [&'static Encoding; 39] = [&UTF_8_INIT,
                                              &ISO_8859_15_INIT,
                                              &ISO_8859_16_INIT,
                                              &ISO_8859_8_I_INIT,
-                                             &X_MAC_CYRILLIC_INIT];
+                                             &X_MAC_CYRILLIC_INIT,
+                                             &TCVN3_INIT];
 
 fn check_utf8(data: &[u8]) {
     if let Err(_) = ::std::str::from_utf8(data) {
