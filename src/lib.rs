@@ -2188,10 +2188,7 @@ pub static X_USER_DEFINED: &'static Encoding = &X_USER_DEFINED_INIT;
 /// unique cross-crate or if Rust starts allowing static arrays
 /// to be initialized with `pub static FOO: &'static Encoding`
 /// items.
-pub static TCVN3_INIT: Encoding = Encoding {
-    name: "tcvn3",
-    variant: VariantEncoding::SingleByte(&data::SINGLE_BYTE_DATA.tcvn3, 0x00C0, 0x80, 96),
-};
+pub static TCVN3_INIT: (&'static Encoding, &'static str) = (&TCVN3, "tcvn3");
 
 /// The TCVN3 encoding.
 ///
@@ -2206,7 +2203,10 @@ pub static TCVN3_INIT: Encoding = Encoding {
 /// to make the referent of `pub const FOO: &'static Encoding`
 /// unique cross-crate, so don't take the address of this
 /// `static`.
-pub static TCVN3_INIT: (&'static Encoding, &'static str) = (&TCVN3, "tcvn3");
+pub static TCVN3: Encoding = Encoding {
+    name: "tcvn3",
+    variant: VariantEncoding::SingleByte(&data::SINGLE_BYTE_DATA.tcvn3, 0x00C0, 0x80, 96),
+};
 
 static LABELS_SORTED: [&'static str; 228] = [
     "l1",
