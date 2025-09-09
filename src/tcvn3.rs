@@ -335,7 +335,8 @@ impl Tcvn3Encoder {
         },
         {},
         {},
-        {}
+        {},
+        eof = {}
     );
 }
 
