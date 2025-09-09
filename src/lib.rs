@@ -2425,7 +2425,7 @@ static LABELS_SORTED: [&'static str; 229] = [
     "tcvn3",
 ];
 
-static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 228] = [
+static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 229] = [
     &WINDOWS_1252_INIT,
     &ISO_8859_2_INIT,
     &ISO_8859_3_INIT,
