@@ -2176,37 +2176,22 @@ pub static X_USER_DEFINED_INIT: Encoding = Encoding {
 /// `static`.
 pub static X_USER_DEFINED: &'static Encoding = &X_USER_DEFINED_INIT;
 
-/// The initializer for the [TCVN3](static.TCVN3.html) encoding.
-///
-/// For use only for taking the address of this form when
-/// Rust prohibits the use of the non-`_INIT` form directly,
-/// such as in initializers of other `static`s. If in doubt,
-/// use the non-`_INIT` reference-typed `static`.
-///
-/// This part of the public API will go away if Rust changes
-/// to make the referent of `pub const FOO: &'static Encoding`
-/// unique cross-crate or if Rust starts allowing static arrays
-/// to be initialized with `pub static FOO: &'static Encoding`
-/// items.
-pub static TCVN3_INIT: (&'static Encoding, &'static str) = (&TCVN3, "tcvn3");
+/// The initializer for the [TCVN-3](static.TCVN3.html) encoding.
+pub static TCVN3_INIT: Encoding = Encoding {
+    name: "tcvn-3",
+    variant: VariantEncoding::SingleByte(&data::SINGLE_BYTE_DATA.tcvn3, 0x00C0, 0x80, 96),
+};
 
-/// The TCVN3 encoding.
+/// The TCVN-3 encoding.
 ///
-/// TCVN3 (Vietnam National Standard) is a character encoding used for Vietnamese text.
+/// TCVN-3 (Vietnam National Standard) is a character encoding used for Vietnamese text.
 /// This is a legacy encoding that predates Unicode adoption in Vietnam.
-///
-/// This encoding is designed to be a superset of ASCII for bytes
-/// less than 0x80. Unlike ISO-8859-1, the bytes from 0x80 to 0x9F are
-/// mapped to Vietnamese characters instead of C1 controls.
 ///
 /// This will change from `static` to `const` if Rust changes
 /// to make the referent of `pub const FOO: &'static Encoding`
 /// unique cross-crate, so don't take the address of this
 /// `static`.
-pub static TCVN3: Encoding = Encoding {
-    name: "tcvn3",
-    variant: VariantEncoding::SingleByte(&data::SINGLE_BYTE_DATA.tcvn3, 0x00C0, 0x80, 96),
-};
+pub static TCVN3: &'static Encoding = &TCVN3_INIT;
 
 static LABELS_SORTED: [&'static str; 229] = [
     "l1",
