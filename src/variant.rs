@@ -351,6 +351,7 @@ pub enum VariantEncoding {
     Utf16Be,
     Utf16Le,
     UserDefined,
+    Tcvn3,
 }
 
 impl VariantEncoding {
