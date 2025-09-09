@@ -771,6 +771,7 @@ mod single_byte;
 mod utf_16;
 mod utf_8;
 mod x_user_defined;
+mod tcvn3;
 
 mod ascii;
 mod data;
