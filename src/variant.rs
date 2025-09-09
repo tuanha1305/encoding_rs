@@ -233,6 +233,7 @@ pub enum VariantEncoder {
     ShiftJis(ShiftJisEncoder),
     EucKr(EucKrEncoder),
     UserDefined(UserDefinedEncoder),
+    Tcvn3(Tcvn3Encoder),
 }
 
 impl VariantEncoder {
