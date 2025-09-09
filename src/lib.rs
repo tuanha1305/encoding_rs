@@ -2208,7 +2208,7 @@ pub static TCVN3: Encoding = Encoding {
     variant: VariantEncoding::SingleByte(&data::SINGLE_BYTE_DATA.tcvn3, 0x00C0, 0x80, 96),
 };
 
-static LABELS_SORTED: [&'static str; 228] = [
+static LABELS_SORTED: [&'static str; 229] = [
     "l1",
     "l2",
     "l3",
