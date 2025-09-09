@@ -2179,7 +2179,7 @@ pub static X_USER_DEFINED: &'static Encoding = &X_USER_DEFINED_INIT;
 /// The initializer for the [TCVN-3](static.TCVN3.html) encoding.
 pub static TCVN3_INIT: Encoding = Encoding {
     name: "tcvn3",
-    variant: VariantEncoding::SingleByte(&data::SINGLE_BYTE_DATA.tcvn3, 0x00C0, 0x80, 96),
+    variant: VariantEncoding::SingleByte(&data::SINGLE_BYTE_DATA.tcvn3, 0x0000, 0x80, 0),
 };
 
 /// The TCVN-3 encoding.
