@@ -12,9 +12,14 @@
 //! TCVN3 is a multi-byte character encoding used for Vietnamese text.
 //! It uses both single-byte and two-byte sequences to represent Vietnamese characters.
 
+#![no_std]
+extern crate alloc;
+
 use crate::variant::*;
 use crate::{DecoderResult, EncoderResult, Encoding, Encoder};
 use alloc::string::ToString;
+use alloc::vec::Vec;
+use alloc::string::String;
 
 // TCVN3 Unicode to byte sequence mapping
 // Based on https://vietunicode.sourceforge.net/charset
@@ -180,7 +185,9 @@ impl Tcvn3Decoder {
                         } else {
                             // Need to handle non-ASCII in UTF-8 context
                             let ch = unsafe { char::from_u32_unchecked(unicode as u32) };
-                            let utf8_bytes = ch.to_string().as_bytes().to_vec();
+                            let mut utf8_buffer = [0u8; 4];
+                            let utf8_str = ch.encode_utf8(&mut utf8_buffer);
+                            let utf8_bytes = utf8_str.as_bytes().to_vec();
                             if dst_pos + utf8_bytes.len() > dst.len() {
                                 return (DecoderResult::OutputFull, src_pos, dst_pos);
                             }
@@ -205,7 +212,9 @@ impl Tcvn3Decoder {
                     } else {
                         // Need to handle non-ASCII in UTF-8 context
                         let ch = unsafe { char::from_u32_unchecked(unicode as u32) };
-                        let utf8_bytes = ch.to_string().as_bytes().to_vec();
+                        let mut utf8_buffer = [0u8; 4];
+                        let utf8_str = ch.encode_utf8(&mut utf8_buffer);
+                        let utf8_bytes = utf8_str.as_bytes().to_vec();
                         if dst_pos + utf8_bytes.len() > dst.len() {
                             return (DecoderResult::OutputFull, src_pos, dst_pos);
                         }
