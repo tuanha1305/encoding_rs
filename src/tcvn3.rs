@@ -12,14 +12,8 @@
 //! TCVN3 is a multi-byte character encoding used for Vietnamese text.
 //! It uses both single-byte and two-byte sequences to represent Vietnamese characters.
 
-#![no_std]
-extern crate alloc;
-
 use crate::variant::*;
 use crate::{DecoderResult, EncoderResult, Encoding, Encoder};
-use alloc::string::ToString;
-use alloc::vec::Vec;
-use alloc::string::String;
 
 // TCVN3 Unicode to byte sequence mapping
 // Based on https://vietunicode.sourceforge.net/charset
@@ -688,49 +682,403 @@ mod tests {
         let sentence = "Chào bạn!";
         
         let mut encoded = [0u8; 64];
-        let (encode_result, _encode_read, encode_written) = tcvn3_encode_from_utf8_impl(sentence, &mut encoded);
+            let (_encode_result, _encode_read, encode_written) = tcvn3_encode_from_utf8_impl(sentence, &mut encoded);
         
         // Những ký tự ASCII như "Chao ban!" sẽ encode được
         // Những ký tự có dấu có thể không encode được nếu không có trong bảng
         assert!(encode_written > 0, "Should encode at least some characters");
     }
 
-    #[test] 
-    fn test_tcvn3_special_vietnamese_chars() {
-        // Test các ký tự đặc biệt tiếng Việt
+    #[test]
+    fn test_tcvn3_all_vietnamese_vowels_uppercase() {
+        // Test tất cả nguyên âm tiếng Việt hoa
         let test_cases = [
-            ("à", &[0xB5u8][..]),           // à -> µ
-            ("á", &[0xB8u8][..]),           // á -> ¸  
-            ("ả", &[0xB7u8][..]),           // ã -> ·
-            ("ã", &[0xB7u8][..]),           // ã -> ·
-            ("ạ", &[0xB5u8][..]),           // à -> µ (tạm thời)
-            ("â", &[0xA9u8][..]),           // â -> ©
-            ("ă", &[0xA8u8][..]),           // ă -> ¨
-            ("đ", &[0xAEu8][..]),           // đ -> ®
-            ("ê", &[0xAAu8][..]),           // ê -> ª
-            ("ô", &[0xABu8][..]),           // ô -> «
-            ("ơ", &[0xACu8][..]),           // ơ -> ¬
-            ("ư", &[0xADu8][..]),           // ư -> ­
+            // Nguyên âm A
+            ("À", &[0x41u8, 0xB5][..]),     // À -> Aµ  
+            ("Á", &[0x41u8, 0xB8][..]),     // Á -> A¸
+            ("Â", &[0xA2u8][..]),           // Â -> ¢
+            ("Ã", &[0x41u8, 0xB7][..]),     // Ã -> A·
+            ("Ă", &[0xA1u8][..]),           // Ă -> ¡
+            
+            // Nguyên âm E
+            ("È", &[0x45u8, 0xCC][..]),     // È -> EÌ
+            ("É", &[0x45u8, 0xD0][..]),     // É -> EÐ
+            ("Ê", &[0xA3u8][..]),           // Ê -> £
+            
+            // Nguyên âm I
+            ("Ì", &[0x49u8, 0xD7][..]),     // Ì -> I×
+            ("Í", &[0x49u8, 0xDD][..]),     // Í -> IÝ
+            ("Ĩ", &[0x49u8, 0xDC][..]),     // Ĩ -> IÜ
+            
+            // Nguyên âm O
+            ("Ò", &[0x4Fu8, 0xDF][..]),     // Ò -> Oß
+            ("Ó", &[0x4Fu8, 0xE3][..]),     // Ó -> Oã
+            ("Ô", &[0xA4u8][..]),           // Ô -> ¤
+            ("Õ", &[0x4Fu8, 0xE2][..]),     // Õ -> Oâ
+            ("Ơ", &[0xA5u8][..]),           // Ơ -> ¥
+            
+            // Nguyên âm U
+            ("Ù", &[0x55u8, 0xEF][..]),     // Ù -> Uï
+            ("Ú", &[0x55u8, 0xF3][..]),     // Ú -> Uó
+            ("Ũ", &[0x55u8, 0xF2][..]),     // Ũ -> Uò
+            ("Ư", &[0xA6u8][..]),           // Ư -> ¦
+            
+            // Y
+            ("Ý", &[0x59u8, 0xFD][..]),     // Ý -> Yý
+            
+            // Đ
+            ("Đ", &[0xA7u8][..]),           // Đ -> §
         ];
 
         for (input, expected) in test_cases.iter() {
             let mut output = [0u8; 8];
             let (result, _read, written) = tcvn3_encode_from_utf8_impl(input, &mut output);
             
-            if result == EncoderResult::InputEmpty {
-                assert_eq!(&output[..written], *expected, "Failed for character '{}'", input);
-                
-                // Test decode ngược
+            assert_eq!(result, EncoderResult::InputEmpty, "Failed to encode '{}'", input);
+            assert_eq!(&output[..written], *expected, "Wrong encoding for '{}'", input);
+            
+            // Test decode ngược
+            let mut decoder = Tcvn3Decoder::new();
+            if let VariantDecoder::Tcvn3(ref mut dec) = decoder {
+                let mut decoded = [0u8; 8];
+                let (decode_result, _, decode_written) = dec.decode_to_utf8_raw(expected, &mut decoded, true);
+                assert_eq!(decode_result, DecoderResult::InputEmpty, "Failed to decode for '{}'", input);
+                let decoded_str = core::str::from_utf8(&decoded[..decode_written]).unwrap();
+                assert_eq!(decoded_str, *input, "Decode mismatch for '{}'", input);
+            }
+        }
+    }
+
+    #[test]
+    fn test_tcvn3_all_vietnamese_vowels_lowercase() {
+        // Test tất cả nguyên âm tiếng Việt thường
+        let test_cases = [
+            // Nguyên âm a
+            ("à", &[0xB5u8][..]),           // à -> µ
+            ("á", &[0xB8u8][..]),           // á -> ¸
+            ("â", &[0xA9u8][..]),           // â -> ©
+            ("ã", &[0xB7u8][..]),           // ã -> ·
+            ("ă", &[0xA8u8][..]),           // ă -> ¨
+            
+            // Nguyên âm e
+            ("è", &[0xCCu8][..]),           // è -> Ì
+            ("é", &[0xD0u8][..]),           // é -> Ð
+            ("ê", &[0xAAu8][..]),           // ê -> ª
+            
+            // Nguyên âm i
+            ("ì", &[0xD7u8][..]),           // ì -> ×
+            ("í", &[0xDDu8][..]),           // í -> Ý
+            ("ĩ", &[0xDCu8][..]),           // ĩ -> Ü
+            
+            // Nguyên âm o
+            ("ò", &[0xDFu8][..]),           // ò -> ß
+            ("ó", &[0xE3u8][..]),           // ó -> ã
+            ("ô", &[0xABu8][..]),           // ô -> «
+            ("õ", &[0xE2u8][..]),           // õ -> â
+            ("ơ", &[0xACu8][..]),           // ơ -> ¬
+            
+            // Nguyên âm u
+            ("ù", &[0xEFu8][..]),           // ù -> ï
+            ("ú", &[0xF3u8][..]),           // ú -> ó
+            ("ũ", &[0xF2u8][..]),           // ũ -> ò
+            ("ư", &[0xADu8][..]),           // ư -> ­
+            
+            // y
+            ("ý", &[0xFDu8][..]),           // ý -> ý
+            
+            // đ
+            ("đ", &[0xAEu8][..]),           // đ -> ®
+        ];
+
+        for (input, expected) in test_cases.iter() {
+            let mut output = [0u8; 8];
+            let (result, _read, written) = tcvn3_encode_from_utf8_impl(input, &mut output);
+            
+            assert_eq!(result, EncoderResult::InputEmpty, "Failed to encode '{}'", input);
+            assert_eq!(&output[..written], *expected, "Wrong encoding for '{}'", input);
+            
+            // Test decode ngược
+            let mut decoder = Tcvn3Decoder::new();
+            if let VariantDecoder::Tcvn3(ref mut dec) = decoder {
+                let mut decoded = [0u8; 8];
+                let (decode_result, _, decode_written) = dec.decode_to_utf8_raw(expected, &mut decoded, true);
+                assert_eq!(decode_result, DecoderResult::InputEmpty, "Failed to decode for '{}'", input);
+                let decoded_str = core::str::from_utf8(&decoded[..decode_written]).unwrap();
+                assert_eq!(decoded_str, *input, "Decode mismatch for '{}'", input);
+            }
+        }
+    }
+
+    #[test]
+    fn test_tcvn3_vietnamese_extended_characters_uppercase() {
+        // Test các ký tự mở rộng tiếng Việt hoa (1EA0-1EF9)
+        let test_cases = [
+            // A với các dấu đặc biệt
+            ("Ạ", &[0x41u8, 0xB9][..]),     // Ạ -> A¹
+            ("Ả", &[0x41u8, 0xB6][..]),     // Ả -> A¶
+            ("Ấ", &[0xA2u8, 0xCA][..]),     // Ấ -> ¢Ê
+            ("Ầ", &[0xA2u8, 0xC7][..]),     // Ầ -> ¢Ç
+            ("Ẩ", &[0xA2u8, 0xC8][..]),     // Ẩ -> ¢È
+            ("Ẫ", &[0xA2u8, 0xC9][..]),     // Ẫ -> ¢É
+            ("Ậ", &[0xA2u8, 0xCB][..]),     // Ậ -> ¢Ë
+            ("Ắ", &[0xA1u8, 0xBE][..]),     // Ắ -> ¡¾
+            ("Ằ", &[0xA1u8, 0xBB][..]),     // Ằ -> ¡»
+            ("Ẳ", &[0xA1u8, 0xBC][..]),     // Ẳ -> ¡¼
+            ("Ẵ", &[0xA1u8, 0xBD][..]),     // Ẵ -> ¡½
+            ("Ặ", &[0xA1u8, 0xC6][..]),     // Ặ -> ¡Æ
+            
+            // E với các dấu đặc biệt
+            ("Ẹ", &[0x45u8, 0xD1][..]),     // Ẹ -> EÑ
+            ("Ẻ", &[0x45u8, 0xCE][..]),     // Ẻ -> EÎ
+            ("Ẽ", &[0x45u8, 0xCF][..]),     // Ẽ -> EÏ
+            ("Ế", &[0xA3u8, 0xD5][..]),     // Ế -> £Õ
+            ("Ề", &[0xA3u8, 0xD2][..]),     // Ề -> £Ò
+            ("Ể", &[0xA3u8, 0xD3][..]),     // Ể -> £Ó
+            ("Ễ", &[0xA3u8, 0xD4][..]),     // Ễ -> £Ô
+            ("Ệ", &[0xA3u8, 0xD6][..]),     // Ệ -> £Ö
+            
+            // I với các dấu đặc biệt
+            ("Ỉ", &[0x49u8, 0xD8][..]),     // Ỉ -> IØ
+            ("Ị", &[0x49u8, 0xDE][..]),     // Ị -> IÞ
+            
+            // O với các dấu đặc biệt
+            ("Ọ", &[0x4Fu8, 0xE4][..]),     // Ọ -> Oä
+            ("Ỏ", &[0x4Fu8, 0xE1][..]),     // Ỏ -> Oá
+            ("Ố", &[0xA4u8, 0xE8][..]),     // Ố -> ¤è
+            ("Ồ", &[0xA4u8, 0xE5][..]),     // Ồ -> ¤å
+            ("Ổ", &[0xA4u8, 0xE6][..]),     // Ổ -> ¤æ
+            ("Ỗ", &[0xA4u8, 0xE7][..]),     // Ỗ -> ¤ç
+            ("Ộ", &[0xA4u8, 0xE9][..]),     // Ộ -> ¤é
+            ("Ớ", &[0xA5u8, 0xED][..]),     // Ớ -> ¥í
+            ("Ờ", &[0xA5u8, 0xEA][..]),     // Ờ -> ¥ê
+            ("Ở", &[0xA5u8, 0xEB][..]),     // Ở -> ¥ë
+            ("Ỡ", &[0xA5u8, 0xEC][..]),     // Ỡ -> ¥ì
+            ("Ợ", &[0xA5u8, 0xEE][..]),     // Ợ -> ¥î
+            
+            // U với các dấu đặc biệt
+            ("Ụ", &[0x55u8, 0xF4][..]),     // Ụ -> Uô
+            ("Ủ", &[0x55u8, 0xF1][..]),     // Ủ -> Uñ
+            ("Ứ", &[0xA6u8, 0xF8][..]),     // Ứ -> ¦ø
+            ("Ừ", &[0xA6u8, 0xF5][..]),     // Ừ -> ¦õ
+            ("Ử", &[0xA6u8, 0xF6][..]),     // Ử -> ¦ö
+            ("Ữ", &[0xA6u8, 0xF7][..]),     // Ữ -> ¦÷
+            ("Ự", &[0xA6u8, 0xF9][..]),     // Ự -> ¦ù
+            
+            // Y với các dấu đặc biệt
+            ("Ỳ", &[0x59u8, 0xFA][..]),     // Ỳ -> Yú
+            ("Ỵ", &[0x59u8, 0xFE][..]),     // Ỵ -> Yþ
+            ("Ỷ", &[0x59u8, 0xFB][..]),     // Ỷ -> Yû
+            ("Ỹ", &[0x59u8, 0xFC][..]),     // Ỹ -> Yü
+        ];
+
+        for (input, expected) in test_cases.iter() {
+            let mut output = [0u8; 8];
+            let (result, _read, written) = tcvn3_encode_from_utf8_impl(input, &mut output);
+            
+            assert_eq!(result, EncoderResult::InputEmpty, "Failed to encode '{}'", input);
+            assert_eq!(&output[..written], *expected, "Wrong encoding for '{}'", input);
+            
+            // Test decode ngược
+            let mut decoder = Tcvn3Decoder::new();
+            if let VariantDecoder::Tcvn3(ref mut dec) = decoder {
+                let mut decoded = [0u8; 8];
+                let (decode_result, _, decode_written) = dec.decode_to_utf8_raw(expected, &mut decoded, true);
+                assert_eq!(decode_result, DecoderResult::InputEmpty, "Failed to decode for '{}'", input);
+                let decoded_str = core::str::from_utf8(&decoded[..decode_written]).unwrap();
+                assert_eq!(decoded_str, *input, "Decode mismatch for '{}'", input);
+            }
+        }
+    }
+
+    #[test]
+    fn test_tcvn3_vietnamese_extended_characters_lowercase() {
+        // Test các ký tự mở rộng tiếng Việt thường (1EA0-1EF9)
+        let test_cases = [
+            // a với các dấu đặc biệt
+            ("ạ", &[0xB9u8][..]),           // ạ -> ¹
+            ("ả", &[0xB6u8][..]),           // ả -> ¶
+            ("ấ", &[0xCAu8][..]),           // ấ -> Ê
+            ("ầ", &[0xC7u8][..]),           // ầ -> Ç
+            ("ẩ", &[0xC8u8][..]),           // ẩ -> È
+            ("ẫ", &[0xC9u8][..]),           // ẫ -> É
+            ("ậ", &[0xCBu8][..]),           // ậ -> Ë
+            ("ắ", &[0xBEu8][..]),           // ắ -> ¾
+            ("ằ", &[0xBBu8][..]),           // ằ -> »
+            ("ẳ", &[0xBCu8][..]),           // ẳ -> ¼
+            ("ẵ", &[0xBDu8][..]),           // ẵ -> ½
+            ("ặ", &[0xC6u8][..]),           // ặ -> Æ
+            
+            // e với các dấu đặc biệt
+            ("ẹ", &[0xD1u8][..]),           // ẹ -> Ñ
+            ("ẻ", &[0xCEu8][..]),           // ẻ -> Î
+            ("ẽ", &[0xCFu8][..]),           // ẽ -> Ï
+            ("ế", &[0xD5u8][..]),           // ế -> Õ
+            ("ề", &[0xD2u8][..]),           // ề -> Ò
+            ("ể", &[0xD3u8][..]),           // ể -> Ó
+            ("ễ", &[0xD4u8][..]),           // ễ -> Ô
+            ("ệ", &[0xD6u8][..]),           // ệ -> Ö
+            
+            // i với các dấu đặc biệt
+            ("ỉ", &[0xD8u8][..]),           // ỉ -> Ø
+            ("ị", &[0xDEu8][..]),           // ị -> Þ
+            
+            // o với các dấu đặc biệt
+            ("ọ", &[0xE4u8][..]),           // ọ -> ä
+            ("ỏ", &[0xE1u8][..]),           // ỏ -> á
+            ("ố", &[0xE8u8][..]),           // ố -> è
+            ("ồ", &[0xE5u8][..]),           // ồ -> å
+            ("ổ", &[0xE6u8][..]),           // ổ -> æ
+            ("ỗ", &[0xE7u8][..]),           // ỗ -> ç
+            ("ộ", &[0xE9u8][..]),           // ộ -> é
+            ("ớ", &[0xEDu8][..]),           // ớ -> í
+            ("ờ", &[0xEAu8][..]),           // ờ -> ê
+            ("ở", &[0xEBu8][..]),           // ở -> ë
+            ("ỡ", &[0xECu8][..]),           // ỡ -> ì
+            ("ợ", &[0xEEu8][..]),           // ợ -> î
+            
+            // u với các dấu đặc biệt
+            ("ụ", &[0xF4u8][..]),           // ụ -> ô
+            ("ủ", &[0xF1u8][..]),           // ủ -> ñ
+            ("ứ", &[0xF8u8][..]),           // ứ -> ø
+            ("ừ", &[0xF5u8][..]),           // ừ -> õ
+            ("ử", &[0xF6u8][..]),           // ử -> ö
+            ("ữ", &[0xF7u8][..]),           // ữ -> ÷
+            ("ự", &[0xF9u8][..]),           // ự -> ù
+            
+            // y với các dấu đặc biệt
+            ("ỳ", &[0xFAu8][..]),           // ỳ -> ú
+            ("ỵ", &[0xFEu8][..]),           // ỵ -> þ
+            ("ỷ", &[0xFBu8][..]),           // ỷ -> û
+            ("ỹ", &[0xFCu8][..]),           // ỹ -> ü
+        ];
+
+        for (input, expected) in test_cases.iter() {
+            let mut output = [0u8; 8];
+            let (result, _read, written) = tcvn3_encode_from_utf8_impl(input, &mut output);
+            
+            assert_eq!(result, EncoderResult::InputEmpty, "Failed to encode '{}'", input);
+            assert_eq!(&output[..written], *expected, "Wrong encoding for '{}'", input);
+            
+            // Test decode ngược
+            let mut decoder = Tcvn3Decoder::new();
+            if let VariantDecoder::Tcvn3(ref mut dec) = decoder {
+                let mut decoded = [0u8; 8];
+                let (decode_result, _, decode_written) = dec.decode_to_utf8_raw(expected, &mut decoded, true);
+                assert_eq!(decode_result, DecoderResult::InputEmpty, "Failed to decode for '{}'", input);
+                let decoded_str = core::str::from_utf8(&decoded[..decode_written]).unwrap();
+                assert_eq!(decoded_str, *input, "Decode mismatch for '{}'", input);
+            }
+        }
+    }
+
+    #[test]
+    fn test_tcvn3_complete_vietnamese_sentences() {
+        // Test với các câu tiếng Việt hoàn chỉnh
+        let test_sentences = [
+            "Xin chào",
+            "Việt Nam",
+            "Tiếng Việt", 
+            "Hà Nội",
+            "Thành phố Hồ Chí Minh",
+            "Đại học Quốc gia",
+            "Tôi yêu Việt Nam",
+        ];
+
+        for sentence in test_sentences.iter() {
+            let mut encoded = [0u8; 256];
+            let (encode_result, encode_read, encode_written) = tcvn3_encode_from_utf8_impl(sentence, &mut encoded);
+            
+            // Một số ký tự có thể không encode được, nhưng ít nhất ASCII phải được
+            assert!(encode_written > 0, "Should encode at least some characters in '{}'", sentence);
+            assert!(encode_read > 0, "Should read at least some characters from '{}'", sentence);
+            
+            // Test decode ngược với phần đã encode được
+            if encode_result == EncoderResult::InputEmpty {
                 let mut decoder = Tcvn3Decoder::new();
                 if let VariantDecoder::Tcvn3(ref mut dec) = decoder {
-                    let mut decoded = [0u8; 8];
-                    let (decode_result, _, decode_written) = dec.decode_to_utf8_raw(expected, &mut decoded, true);
-                    if decode_result == DecoderResult::InputEmpty {
-                        let _decoded_str = core::str::from_utf8(&decoded[..decode_written]).unwrap();
-                        // Decoded back successfully
-                    }
+                    let mut decoded = [0u8; 256];
+                    let (decode_result, _, decode_written) = dec.decode_to_utf8_raw(&encoded[..encode_written], &mut decoded, true);
+                    assert_eq!(decode_result, DecoderResult::InputEmpty, "Failed to decode sentence '{}'", sentence);
+                    let decoded_str = core::str::from_utf8(&decoded[..decode_written]).unwrap();
+                    assert_eq!(decoded_str, *sentence, "Decode mismatch for sentence '{}'", sentence);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn test_tcvn3_ascii_passthrough() {
+        // Test ASCII characters pass through unchanged
+        let ascii_text = "Hello World 123!@#$%^&*()";
+        let mut encoded = [0u8; 64];
+        let (result, read, written) = tcvn3_encode_from_utf8_impl(ascii_text, &mut encoded);
+        
+        assert_eq!(result, EncoderResult::InputEmpty);
+        assert_eq!(read, ascii_text.len());
+        assert_eq!(written, ascii_text.len());
+        assert_eq!(&encoded[..written], ascii_text.as_bytes());
+        
+        // Test decode
+        let mut decoder = Tcvn3Decoder::new();
+        if let VariantDecoder::Tcvn3(ref mut dec) = decoder {
+            let mut decoded = [0u8; 64];
+            let (decode_result, _, decode_written) = dec.decode_to_utf8_raw(&encoded[..written], &mut decoded, true);
+            assert_eq!(decode_result, DecoderResult::InputEmpty);
+            let decoded_str = core::str::from_utf8(&decoded[..decode_written]).unwrap();
+            assert_eq!(decoded_str, ascii_text);
+        }
+    }
+
+    #[test]
+    fn test_tcvn3_unmappable_characters() {
+        // Test characters that cannot be encoded to TCVN3
+        let unmappable_chars = ["中", "日", "한", "😀", "€"];
+        
+        for ch in unmappable_chars.iter() {
+            let mut output = [0u8; 8];
+            let (result, _read, _written) = tcvn3_encode_from_utf8_impl(ch, &mut output);
+            
+            // Should return Unmappable error
+            match result {
+                EncoderResult::Unmappable(_) => {
+                    // This is expected
+                }
+                _ => panic!("Expected Unmappable error for character '{}'", ch),
+            }
+        }
+    }
+
+    #[test]
+    fn test_tcvn3_buffer_overflow() {
+        // Test buffer overflow scenarios
+        let text = "Việt Nam";
+        let mut small_buffer = [0u8; 2]; // Intentionally small buffer
+        
+        let (result, _read, _written) = tcvn3_encode_from_utf8_impl(text, &mut small_buffer);
+        
+        // Should return OutputFull when buffer is too small
+        assert_eq!(result, EncoderResult::OutputFull);
+    }
+
+    #[test]
+    fn test_tcvn3_mixed_content() {
+        // Test mixed Vietnamese and ASCII content
+        let mixed_text = "Hello Việt Nam 123";
+        let mut encoded = [0u8; 64];
+        let (result, read, written) = tcvn3_encode_from_utf8_impl(mixed_text, &mut encoded);
+        
+        assert_eq!(result, EncoderResult::InputEmpty);
+        assert_eq!(read, mixed_text.len());
+        assert!(written > 0);
+        
+        // Test decode
+        let mut decoder = Tcvn3Decoder::new();
+        if let VariantDecoder::Tcvn3(ref mut dec) = decoder {
+            let mut decoded = [0u8; 64];
+            let (decode_result, _, decode_written) = dec.decode_to_utf8_raw(&encoded[..written], &mut decoded, true);
+            assert_eq!(decode_result, DecoderResult::InputEmpty);
+            let decoded_str = core::str::from_utf8(&decoded[..decode_written]).unwrap();
+            assert_eq!(decoded_str, mixed_text);
         }
     }
 }
