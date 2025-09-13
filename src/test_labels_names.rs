@@ -238,5 +238,5 @@ fn test_all_labels() {
     assert_eq!(Encoding::for_label(b"csisolatinhebrew"), Some(ISO_8859_8));
     assert_eq!(Encoding::for_label(b"unicode-1-1-utf-8"), Some(UTF_8));
     assert_eq!(Encoding::for_label(b"csisolatincyrillic"), Some(ISO_8859_5));
-    assert_eq!(Encoding::for_label(b"cseucpkdfmtjapanese"), Some(EUC_JP));
+    assert_eq!(Encoding::for_label(b"tcvn3"), Some(TCVN3));
 }

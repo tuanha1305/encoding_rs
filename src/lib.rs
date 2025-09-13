@@ -2212,6 +2212,7 @@ static LABELS_SORTED: [&'static str; 229] = [
     "sjis",
     "ucs-2",
     "ms932",
+    "tcvn3",
     "cp866",
     "utf-8",
     "cp819",
@@ -2422,8 +2423,7 @@ static LABELS_SORTED: [&'static str; 229] = [
     "csisolatinhebrew",
     "unicode-1-1-utf-8",
     "csisolatincyrillic",
-    "cseucpkdfmtjapanese",
-    "tcvn3",
+    "cseucpkdfmtjapanese"
 ];
 
 static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 229] = [
@@ -2444,6 +2444,7 @@ static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 229] = [
     &SHIFT_JIS_INIT,
     &UTF_16LE_INIT,
     &SHIFT_JIS_INIT,
+    &TCVN3_INIT,
     &IBM866_INIT,
     &UTF_8_INIT,
     &WINDOWS_1252_INIT,
@@ -2654,8 +2655,7 @@ static ENCODINGS_IN_LABEL_SORT: [&'static Encoding; 229] = [
     &ISO_8859_8_INIT,
     &UTF_8_INIT,
     &ISO_8859_5_INIT,
-    &EUC_JP_INIT,
-    &TCVN3_INIT,
+    &EUC_JP_INIT
 ];
 
 // END GENERATED CODE
