@@ -3535,10 +3535,17 @@ impl<'de> Visitor<'de> for EncodingVisitor {
         if let Some(enc) = Encoding::for_label(value.as_bytes()) {
             Ok(enc)
         } else {
-            Err(E::custom(format!( 
-                "invalid encoding label: {}",
-                value
-            )))
+            #[cfg(feature = "alloc")]
+            {
+                Err(E::custom(alloc::format!(
+                    "invalid encoding label: {}",
+                    value
+                )))
+            }
+            #[cfg(not(feature = "alloc"))]
+            {
+                Err(E::custom("invalid encoding label"))
+            }
         }
     }
 }
