@@ -12,8 +12,17 @@
 //! TCVN3 is a multi-byte character encoding used for Vietnamese text.
 //! It uses both single-byte and two-byte sequences to represent Vietnamese characters.
 
+use crate::ascii::*;
+use crate::handles::*;
 use crate::variant::*;
 use crate::{DecoderResult, EncoderResult, Encoding, Encoder};
+
+cfg_if! {
+    if #[cfg(all(feature = "simd-accel", any(target_feature = "sse2", all(target_endian = "little", target_arch = "aarch64"), all(target_endian = "little", target_feature = "neon"))))] {
+        use crate::simd_funcs::*;
+        use core::simd::u8x16;
+    }
+}
 
 // TCVN3 Unicode to byte sequence mapping
 // Based on https://vietunicode.sourceforge.net/charset
@@ -153,6 +162,199 @@ const TCVN3_ENCODE_TABLE: &[(u16, &[u8])] = &[
     (0x1EF8, b"\x59\xFC"), // Ỹ -> Yü
     (0x1EF9, b"\xFC"), // ỹ -> ü
 ];
+
+// Helper function to decode a single TCVN3 byte
+#[inline(always)]
+fn tcvn3_decode_single_byte(byte: u8) -> Option<u16> {
+    // Only check bytes >= 0x80
+    if byte < 0x80 {
+        return None;
+    }
+    
+    // Use match for common single-byte patterns (more efficient than table lookup)
+    match byte {
+        0xA1 => Some(0x0102), // ¡ -> Ă
+        0xA2 => Some(0x00C2), // ¢ -> Â
+        0xA3 => Some(0x00CA), // £ -> Ê
+        0xA4 => Some(0x00D4), // ¤ -> Ô
+        0xA5 => Some(0x01A0), // ¥ -> Ơ
+        0xA6 => Some(0x01AF), // ¦ -> Ư
+        0xA7 => Some(0x0110), // § -> Đ
+        0xA8 => Some(0x0103), // ¨ -> ă
+        0xA9 => Some(0x00E2), // © -> â
+        0xAA => Some(0x00EA), // ª -> ê
+        0xAB => Some(0x00F4), // « -> ô
+        0xAC => Some(0x01A1), // ¬ -> ơ
+        0xAD => Some(0x01B0), // ­ -> ư
+        0xAE => Some(0x0111), // ® -> đ
+        0xB5 => Some(0x00E0), // µ -> à
+        0xB6 => Some(0x1EA3), // ¶ -> ả
+        0xB7 => Some(0x00E3), // · -> ã
+        0xB8 => Some(0x00E1), // ¸ -> á
+        0xB9 => Some(0x1EA1), // ¹ -> ạ
+        0xBB => Some(0x1EB1), // » -> ằ
+        0xBC => Some(0x1EB3), // ¼ -> ẳ
+        0xBD => Some(0x1EB5), // ½ -> ẵ
+        0xBE => Some(0x1EAF), // ¾ -> ắ
+        0xC6 => Some(0x1EB7), // Æ -> ặ
+        0xC7 => Some(0x1EA7), // Ç -> ầ
+        0xC8 => Some(0x1EA9), // È -> ẩ
+        0xC9 => Some(0x1EAB), // É -> ẫ
+        0xCA => Some(0x1EA5), // Ê -> ấ
+        0xCB => Some(0x1EAD), // Ë -> ậ
+        0xCC => Some(0x00E8), // Ì -> è
+        0xCE => Some(0x1EBB), // Î -> ẻ
+        0xCF => Some(0x1EBD), // Ï -> ẽ
+        0xD0 => Some(0x00E9), // Ð -> é
+        0xD1 => Some(0x1EB9), // Ñ -> ẹ
+        0xD2 => Some(0x1EC1), // Ò -> ề
+        0xD3 => Some(0x1EC3), // Ó -> ể
+        0xD4 => Some(0x1EC5), // Ô -> ễ
+        0xD5 => Some(0x1EBF), // Õ -> ế
+        0xD6 => Some(0x1EC7), // Ö -> ệ
+        0xD7 => Some(0x00EC), // × -> ì
+        0xD8 => Some(0x1EC9), // Ø -> ỉ
+        0xDC => Some(0x0129), // Ü -> ĩ
+        0xDD => Some(0x00ED), // Ý -> í
+        0xDE => Some(0x1ECB), // Þ -> ị
+        0xDF => Some(0x00F2), // ß -> ò
+        0xE1 => Some(0x1ECF), // á -> ỏ
+        0xE2 => Some(0x00F5), // â -> õ
+        0xE3 => Some(0x00F3), // ã -> ó
+        0xE4 => Some(0x1ECD), // ä -> ọ
+        0xE5 => Some(0x1ED3), // å -> ồ
+        0xE6 => Some(0x1ED5), // æ -> ổ
+        0xE7 => Some(0x1ED7), // ç -> ỗ
+        0xE8 => Some(0x1ED1), // è -> ố
+        0xE9 => Some(0x1ED9), // é -> ộ
+        0xEA => Some(0x1EDD), // ê -> ờ
+        0xEB => Some(0x1EDF), // ë -> ở
+        0xEC => Some(0x1EE1), // ì -> ỡ
+        0xED => Some(0x1EDB), // í -> ớ
+        0xEE => Some(0x1EE3), // î -> ợ
+        0xEF => Some(0x00F9), // ï -> ù
+        0xF1 => Some(0x1EE7), // ñ -> ủ
+        0xF2 => Some(0x0169), // ò -> ũ
+        0xF3 => Some(0x00FA), // ó -> ú
+        0xF4 => Some(0x1EE5), // ô -> ụ
+        0xF5 => Some(0x1EEB), // õ -> ừ
+        0xF6 => Some(0x1EED), // ö -> ử
+        0xF7 => Some(0x1EEF), // ÷ -> ữ
+        0xF8 => Some(0x1EE9), // ø -> ứ
+        0xF9 => Some(0x1EF1), // ù -> ự
+        0xFA => Some(0x1EF3), // ú -> ỳ
+        0xFB => Some(0x1EF7), // û -> ỷ
+        0xFC => Some(0x1EF9), // ü -> ỹ
+        0xFD => Some(0x00FD), // ý -> ý
+        0xFE => Some(0x1EF5), // þ -> ỵ
+        _ => None,
+    }
+}
+
+// Helper function to decode a two-byte TCVN3 sequence
+#[inline(always)]
+fn tcvn3_decode_two_bytes(first: u8, second: u8) -> Option<u16> {
+    // Check common two-byte patterns
+    match first {
+        0x41 => match second { // A + diacritic
+            0xB5 => Some(0x00C0), // Aµ -> À
+            0xB6 => Some(0x1EA2), // A¶ -> Ả
+            0xB7 => Some(0x00C3), // A· -> Ã
+            0xB8 => Some(0x00C1), // A¸ -> Á
+            0xB9 => Some(0x1EA0), // A¹ -> Ạ
+            _ => None,
+        },
+        0x45 => match second { // E + diacritic
+            0xCC => Some(0x00C8), // EÌ -> È
+            0xCE => Some(0x1EBA), // EÎ -> Ẻ
+            0xCF => Some(0x1EBC), // EÏ -> Ẽ
+            0xD0 => Some(0x00C9), // EÐ -> É
+            0xD1 => Some(0x1EB8), // EÑ -> Ẹ
+            _ => None,
+        },
+        0x49 => match second { // I + diacritic
+            0xD7 => Some(0x00CC), // I× -> Ì
+            0xD8 => Some(0x1EC8), // IØ -> Ỉ
+            0xDC => Some(0x0128), // IÜ -> Ĩ
+            0xDD => Some(0x00CD), // IÝ -> Í
+            0xDE => Some(0x1ECA), // IÞ -> Ị
+            _ => None,
+        },
+        0x4F => match second { // O + diacritic
+            0xDF => Some(0x00D2), // Oß -> Ò
+            0xE1 => Some(0x1ECE), // Oá -> Ỏ
+            0xE2 => Some(0x00D5), // Oâ -> Õ
+            0xE3 => Some(0x00D3), // Oã -> Ó
+            0xE4 => Some(0x1ECC), // Oä -> Ọ
+            _ => None,
+        },
+        0x55 => match second { // U + diacritic
+            0xEF => Some(0x00D9), // Uï -> Ù
+            0xF1 => Some(0x1EE6), // Uñ -> Ủ
+            0xF2 => Some(0x0168), // Uò -> Ũ
+            0xF3 => Some(0x00DA), // Uó -> Ú
+            0xF4 => Some(0x1EE4), // Uô -> Ụ
+            _ => None,
+        },
+        0x59 => match second { // Y + diacritic
+            0xFA => Some(0x1EF2), // Yú -> Ỳ
+            0xFB => Some(0x1EF6), // Yû -> Ỷ
+            0xFC => Some(0x1EF8), // Yü -> Ỹ
+            0xFD => Some(0x00DD), // Yý -> Ý
+            0xFE => Some(0x1EF4), // Yþ -> Ỵ
+            _ => None,
+        },
+        0xA1 => match second { // Ă + diacritic
+            0xBB => Some(0x1EB0), // ¡» -> Ằ
+            0xBC => Some(0x1EB2), // ¡¼ -> Ẳ
+            0xBD => Some(0x1EB4), // ¡½ -> Ẵ
+            0xBE => Some(0x1EAE), // ¡¾ -> Ắ
+            0xC6 => Some(0x1EB6), // ¡Æ -> Ặ
+            _ => None,
+        },
+        0xA2 => match second { // Â + diacritic
+            0xC7 => Some(0x1EA6), // ¢Ç -> Ầ
+            0xC8 => Some(0x1EA8), // ¢È -> Ẩ
+            0xC9 => Some(0x1EAA), // ¢É -> Ẫ
+            0xCA => Some(0x1EA4), // ¢Ê -> Ấ
+            0xCB => Some(0x1EAC), // ¢Ë -> Ậ
+            _ => None,
+        },
+        0xA3 => match second { // Ê + diacritic
+            0xD2 => Some(0x1EC0), // £Ò -> Ề
+            0xD3 => Some(0x1EC2), // £Ó -> Ể
+            0xD4 => Some(0x1EC4), // £Ô -> Ễ
+            0xD5 => Some(0x1EBE), // £Õ -> Ế
+            0xD6 => Some(0x1EC6), // £Ö -> Ệ
+            _ => None,
+        },
+        0xA4 => match second { // Ô + diacritic
+            0xE5 => Some(0x1ED2), // ¤å -> Ồ
+            0xE6 => Some(0x1ED4), // ¤æ -> Ổ
+            0xE7 => Some(0x1ED6), // ¤ç -> Ỗ
+            0xE8 => Some(0x1ED0), // ¤è -> Ố
+            0xE9 => Some(0x1ED8), // ¤é -> Ộ
+            _ => None,
+        },
+        0xA5 => match second { // Ơ + diacritic
+            0xEA => Some(0x1EDC), // ¥ê -> Ờ
+            0xEB => Some(0x1EDE), // ¥ë -> Ở
+            0xEC => Some(0x1EE0), // ¥ì -> Ỡ
+            0xED => Some(0x1EDA), // ¥í -> Ớ
+            0xEE => Some(0x1EE2), // ¥î -> Ợ
+            _ => None,
+        },
+        0xA6 => match second { // Ư + diacritic
+            0xF5 => Some(0x1EEA), // ¦õ -> Ừ
+            0xF6 => Some(0x1EEC), // ¦ö -> Ử
+            0xF7 => Some(0x1EEE), // ¦÷ -> Ữ
+            0xF8 => Some(0x1EE8), // ¦ø -> Ứ
+            0xF9 => Some(0x1EF0), // ¦ù -> Ự
+            _ => None,
+        },
+        _ => None,
+    }
+}
 
 // TCVN3 decode sequences to Unicode mapping
 // Order matters: longer sequences must come first
@@ -330,85 +532,103 @@ impl Tcvn3Decoder {
         dst: &mut [u8],
         last: bool,
     ) -> (DecoderResult, usize, usize) {
-        let mut src_pos = 0usize;
-        let mut dst_pos = 0usize;
-        'outer: loop {
-            if src_pos >= src.len() {
-                return (DecoderResult::InputEmpty, src_pos, dst_pos);
-            }
-            if dst_pos >= dst.len() {
-                return (DecoderResult::OutputFull, src_pos, dst_pos);
-            }
-
-            // Check for two-byte sequences first
-            if src_pos + 1 < src.len() {
-                let two_bytes = &src[src_pos..src_pos + 2];
-                for &(pattern, unicode) in TCVN3_DECODE_TABLE {
-                    if pattern.len() == 2 && two_bytes == pattern {
-                        if unicode <= 0x7F {
-                            dst[dst_pos] = unicode as u8;
-                            dst_pos += 1;
-                        } else {
-                            // Need to handle non-ASCII in UTF-8 context
-                            let ch = unsafe { char::from_u32_unchecked(unicode as u32) };
-                            let mut utf8_buffer = [0u8; 4];
-                            let utf8_str = ch.encode_utf8(&mut utf8_buffer);
-                            let utf8_bytes = utf8_str.as_bytes().to_vec();
-                            if dst_pos + utf8_bytes.len() > dst.len() {
-                                return (DecoderResult::OutputFull, src_pos, dst_pos);
+        let mut source = ByteSource::new(src);
+        let mut dest = Utf8Destination::new(dst);
+        
+        'outermost: loop {
+            // Use SIMD-accelerated ASCII fast path
+            match dest.copy_ascii_from_check_space_bmp(&mut source) {
+                CopyAsciiResult::Stop(ret) => return ret,
+                CopyAsciiResult::GoOn((non_ascii, mut handle)) => {
+                    'middle: loop {
+                        // Try two-byte sequence first
+                        match source.check_available() {
+                            Space::Full(src_consumed) => {
+                                if last {
+                                    // Single byte at end - check if it's a valid TCVN3 character
+                                    if let Some(unicode) = tcvn3_decode_single_byte(non_ascii) {
+                                        let dest_again = handle.write_bmp_excl_ascii(unicode);
+                                        return (DecoderResult::InputEmpty, src_consumed, dest_again.written());
+                                    }
+                                    return (DecoderResult::Malformed(1, 0), src_consumed, handle.written());
+                                }
+                                // Need more input - could be start of two-byte sequence
+                                self.pending = Some(non_ascii);
+                                return (DecoderResult::InputEmpty, src_consumed, handle.written());
                             }
-                            dst[dst_pos..dst_pos + utf8_bytes.len()].copy_from_slice(&utf8_bytes);
-                            dst_pos += utf8_bytes.len();
+                            Space::Available(source_handle) => {
+                                let (second_byte, unread_handle) = source_handle.read();
+                                
+                                // Try two-byte sequence
+                                if let Some(unicode) = tcvn3_decode_two_bytes(non_ascii, second_byte) {
+                                    let dest_again = unread_handle.commit().write_bmp_excl_ascii(unicode);
+                                    // Continue to next character
+                                    match source.check_available() {
+                                        Space::Full(src_consumed) => {
+                                            return (DecoderResult::InputEmpty, src_consumed, dest_again.written());
+                                        }
+                                        Space::Available(next_source) => {
+                                            match dest_again.check_space_bmp() {
+                                                Space::Full(dst_written) => {
+                                                    return (DecoderResult::OutputFull, next_source.consumed(), dst_written);
+                                                }
+                                                Space::Available(next_handle) => {
+                                                    let (next_byte, next_unread) = next_source.read();
+                                                    if next_byte < 0x80 {
+                                                        // ASCII - write and continue outer loop
+                                                        next_unread.commit();
+                                                        next_handle.write_ascii(next_byte);
+                                                        continue 'outermost;
+                                                    } else {
+                                                        // Non-ASCII - process in middle loop
+                                                        handle = next_handle;
+                                                        next_unread.commit();
+                                                        continue 'middle;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Not a valid two-byte sequence, try single byte
+                                unread_handle.unread();
+                                if let Some(unicode) = tcvn3_decode_single_byte(non_ascii) {
+                                    let dest_again = handle.write_bmp_excl_ascii(unicode);
+                                    
+                                    // Continue to next character
+                                    match source.check_available() {
+                                        Space::Full(src_consumed) => {
+                                            return (DecoderResult::InputEmpty, src_consumed, dest_again.written());
+                                        }
+                                        Space::Available(next_source) => {
+                                            match dest_again.check_space_bmp() {
+                                                Space::Full(dst_written) => {
+                                                    return (DecoderResult::OutputFull, next_source.consumed(), dst_written);
+                                                }
+                                                Space::Available(next_handle) => {
+                                                    let (next_byte, next_unread) = next_source.read();
+                                                    if next_byte < 0x80 {
+                                                        next_unread.commit();
+                                                        next_handle.write_ascii(next_byte);
+                                                        continue 'outermost;
+                                                    } else {
+                                                        handle = next_handle;
+                                                        next_unread.commit();
+                                                        continue 'middle;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Invalid TCVN3 byte
+                                return (DecoderResult::Malformed(1, 0), source.consumed(), handle.written());
+                            }
                         }
-                        src_pos += 2;
-                        continue 'outer;
                     }
                 }
-            }
-
-            let first_byte = src[src_pos];
-            
-            // Check for single-byte sequences
-            let one_byte = &src[src_pos..src_pos + 1];
-            for &(pattern, unicode) in TCVN3_DECODE_TABLE {
-                if pattern.len() == 1 && one_byte == pattern {
-                    if unicode <= 0x7F {
-                        dst[dst_pos] = unicode as u8;
-                        dst_pos += 1;
-                    } else {
-                        // Need to handle non-ASCII in UTF-8 context
-                        let ch = unsafe { char::from_u32_unchecked(unicode as u32) };
-                        let mut utf8_buffer = [0u8; 4];
-                        let utf8_str = ch.encode_utf8(&mut utf8_buffer);
-                        let utf8_bytes = utf8_str.as_bytes().to_vec();
-                        if dst_pos + utf8_bytes.len() > dst.len() {
-                            return (DecoderResult::OutputFull, src_pos, dst_pos);
-                        }
-                        dst[dst_pos..dst_pos + utf8_bytes.len()].copy_from_slice(&utf8_bytes);
-                        dst_pos += utf8_bytes.len();
-                    }
-                    src_pos += 1;
-                    continue 'outer;
-                }
-            }
-
-            // Handle ASCII (after checking for TCVN3 sequences)
-            if first_byte < 0x80 {
-                dst[dst_pos] = first_byte;
-                src_pos += 1;
-                dst_pos += 1;
-                continue;
-            }
-
-            // Unknown byte - use replacement
-            if last || src_pos + 1 < src.len() {
-                dst[dst_pos] = b'?';
-                src_pos += 1;
-                dst_pos += 1;
-            } else {
-                // Need more input
-                self.pending = Some(first_byte);
-                return (DecoderResult::InputEmpty, src_pos, dst_pos);
             }
         }
     }
@@ -419,66 +639,271 @@ impl Tcvn3Decoder {
         dst: &mut [u16],
         last: bool,
     ) -> (DecoderResult, usize, usize) {
-        tcvn3_decode_to_utf16_impl(self, src, dst, last)
-    }
-}
-
-fn tcvn3_decode_to_utf16_impl(decoder: &mut Tcvn3Decoder, src: &[u8], dst: &mut [u16], last: bool) -> (DecoderResult, usize, usize) {
-    let mut src_pos = 0usize;
-    let mut dst_pos = 0usize;
-    
-    'outer: loop {
-        if src_pos >= src.len() {
-            return (DecoderResult::InputEmpty, src_pos, dst_pos);
-        }
-        if dst_pos >= dst.len() {
-            return (DecoderResult::OutputFull, src_pos, dst_pos);
-        }
-
-        // Check for two-byte sequences first
-        if src_pos + 1 < src.len() {
-            let two_bytes = &src[src_pos..src_pos + 2];
-            for &(pattern, unicode) in TCVN3_DECODE_TABLE {
-                if pattern.len() == 2 && two_bytes == pattern {
-                    dst[dst_pos] = unicode;
-                    src_pos += 2;
-                    dst_pos += 1;
-                    continue 'outer;
+        let mut source = ByteSource::new(src);
+        let mut dest = Utf16Destination::new(dst);
+        
+        'outermost: loop {
+            // Use SIMD-accelerated ASCII fast path
+            match dest.copy_ascii_from_check_space_bmp(&mut source) {
+                CopyAsciiResult::Stop(ret) => return ret,
+                CopyAsciiResult::GoOn((non_ascii, mut handle)) => {
+                    'middle: loop {
+                        // Try two-byte sequence first
+                        match source.check_available() {
+                            Space::Full(src_consumed) => {
+                                if last {
+                                    // Single byte at end - check if it's a valid TCVN3 character
+                                    if let Some(unicode) = tcvn3_decode_single_byte(non_ascii) {
+                                        let dest_again = handle.write_bmp_excl_ascii(unicode);
+                                        return (DecoderResult::InputEmpty, src_consumed, dest_again.written());
+                                    }
+                                    return (DecoderResult::Malformed(1, 0), src_consumed, handle.written());
+                                }
+                                // Need more input - could be start of two-byte sequence
+                                self.pending = Some(non_ascii);
+                                return (DecoderResult::InputEmpty, src_consumed, handle.written());
+                            }
+                            Space::Available(source_handle) => {
+                                let (second_byte, unread_handle) = source_handle.read();
+                                
+                                // Try two-byte sequence
+                                if let Some(unicode) = tcvn3_decode_two_bytes(non_ascii, second_byte) {
+                                    let dest_again = unread_handle.commit().write_bmp_excl_ascii(unicode);
+                                    // Continue to next character
+                                    match source.check_available() {
+                                        Space::Full(src_consumed) => {
+                                            return (DecoderResult::InputEmpty, src_consumed, dest_again.written());
+                                        }
+                                        Space::Available(next_source) => {
+                                            match dest_again.check_space_bmp() {
+                                                Space::Full(dst_written) => {
+                                                    return (DecoderResult::OutputFull, next_source.consumed(), dst_written);
+                                                }
+                                                Space::Available(next_handle) => {
+                                                    let (next_byte, next_unread) = next_source.read();
+                                                    if next_byte < 0x80 {
+                                                        // ASCII - write and continue outer loop
+                                                        next_unread.commit();
+                                                        next_handle.write_ascii(next_byte);
+                                                        continue 'outermost;
+                                                    } else {
+                                                        // Non-ASCII - process in middle loop
+                                                        handle = next_handle;
+                                                        next_unread.commit();
+                                                        continue 'middle;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Not a valid two-byte sequence, try single byte
+                                unread_handle.unread();
+                                if let Some(unicode) = tcvn3_decode_single_byte(non_ascii) {
+                                    let dest_again = handle.write_bmp_excl_ascii(unicode);
+                                    
+                                    // Continue to next character
+                                    match source.check_available() {
+                                        Space::Full(src_consumed) => {
+                                            return (DecoderResult::InputEmpty, src_consumed, dest_again.written());
+                                        }
+                                        Space::Available(next_source) => {
+                                            match dest_again.check_space_bmp() {
+                                                Space::Full(dst_written) => {
+                                                    return (DecoderResult::OutputFull, next_source.consumed(), dst_written);
+                                                }
+                                                Space::Available(next_handle) => {
+                                                    let (next_byte, next_unread) = next_source.read();
+                                                    if next_byte < 0x80 {
+                                                        next_unread.commit();
+                                                        next_handle.write_ascii(next_byte);
+                                                        continue 'outermost;
+                                                    } else {
+                                                        handle = next_handle;
+                                                        next_unread.commit();
+                                                        continue 'middle;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Invalid TCVN3 byte
+                                return (DecoderResult::Malformed(1, 0), source.consumed(), handle.written());
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+}
 
-        let first_byte = src[src_pos];
+// Helper function to encode a Unicode codepoint to TCVN3
+#[inline(always)]
+fn tcvn3_encode_bmp(bmp: u16) -> Option<&'static [u8]> {
+    // Fast path for common Vietnamese characters using match (branch prediction friendly)
+    match bmp {
+        // Single-byte encodings (most common)
+        0x0102 => Some(b"\xA1"), // Ă
+        0x0103 => Some(b"\xA8"), // ă
+        0x00C2 => Some(b"\xA2"), // Â
+        0x00E2 => Some(b"\xA9"), // â
+        0x00CA => Some(b"\xA3"), // Ê
+        0x00EA => Some(b"\xAA"), // ê
+        0x00D4 => Some(b"\xA4"), // Ô
+        0x00F4 => Some(b"\xAB"), // ô
+        0x01A0 => Some(b"\xA5"), // Ơ
+        0x01A1 => Some(b"\xAC"), // ơ
+        0x01AF => Some(b"\xA6"), // Ư
+        0x01B0 => Some(b"\xAD"), // ư
+        0x0110 => Some(b"\xA7"), // Đ
+        0x0111 => Some(b"\xAE"), // đ
         
-        // Check for single-byte sequences
-        let one_byte = &src[src_pos..src_pos + 1];
-        for &(pattern, unicode) in TCVN3_DECODE_TABLE {
-            if pattern.len() == 1 && one_byte == pattern {
-                dst[dst_pos] = unicode;
-                src_pos += 1;
-                dst_pos += 1;
-                continue 'outer;
-            }
-        }
-
-        // Handle ASCII (after checking for TCVN3 sequences)
-        if first_byte < 0x80 {
-            dst[dst_pos] = first_byte as u16;
-            src_pos += 1;
-            dst_pos += 1;
-            continue;
-        }
-
-        // Unknown byte - use replacement
-        if last || src_pos + 1 < src.len() {
-            dst[dst_pos] = 0xFFFD; // Unicode replacement character
-            src_pos += 1;
-            dst_pos += 1;
-        } else {
-            // Need more input
-            decoder.pending = Some(first_byte);
-            return (DecoderResult::InputEmpty, src_pos, dst_pos);
-        }
+        // Common lowercase vowels with tones
+        0x00E0 => Some(b"\xB5"), // à
+        0x00E1 => Some(b"\xB8"), // á
+        0x00E3 => Some(b"\xB7"), // ã
+        0x1EA3 => Some(b"\xB6"), // ả
+        0x1EA1 => Some(b"\xB9"), // ạ
+        
+        0x00E8 => Some(b"\xCC"), // è
+        0x00E9 => Some(b"\xD0"), // é
+        0x1EBB => Some(b"\xCE"), // ẻ
+        0x1EBD => Some(b"\xCF"), // ẽ
+        0x1EB9 => Some(b"\xD1"), // ẹ
+        
+        0x00EC => Some(b"\xD7"), // ì
+        0x00ED => Some(b"\xDD"), // í
+        0x1EC9 => Some(b"\xD8"), // ỉ
+        0x0129 => Some(b"\xDC"), // ĩ
+        0x1ECB => Some(b"\xDE"), // ị
+        
+        0x00F2 => Some(b"\xDF"), // ò
+        0x00F3 => Some(b"\xE3"), // ó
+        0x00F5 => Some(b"\xE2"), // õ
+        0x1ECF => Some(b"\xE1"), // ỏ
+        0x1ECD => Some(b"\xE4"), // ọ
+        
+        0x00F9 => Some(b"\xEF"), // ù
+        0x00FA => Some(b"\xF3"), // ú
+        0x1EE7 => Some(b"\xF1"), // ủ
+        0x0169 => Some(b"\xF2"), // ũ
+        0x1EE5 => Some(b"\xF4"), // ụ
+        
+        0x00FD => Some(b"\xFD"), // ý
+        0x1EF3 => Some(b"\xFA"), // ỳ
+        0x1EF7 => Some(b"\xFB"), // ỷ
+        0x1EF9 => Some(b"\xFC"), // ỹ
+        0x1EF5 => Some(b"\xFE"), // ỵ
+        
+        // Two-byte encodings (uppercase with tones)
+        0x00C0 => Some(b"\x41\xB5"), // À
+        0x00C1 => Some(b"\x41\xB8"), // Á
+        0x00C3 => Some(b"\x41\xB7"), // Ã
+        0x1EA2 => Some(b"\x41\xB6"), // Ả
+        0x1EA0 => Some(b"\x41\xB9"), // Ạ
+        
+        0x00C8 => Some(b"\x45\xCC"), // È
+        0x00C9 => Some(b"\x45\xD0"), // É
+        0x1EBA => Some(b"\x45\xCE"), // Ẻ
+        0x1EBC => Some(b"\x45\xCF"), // Ẽ
+        0x1EB8 => Some(b"\x45\xD1"), // Ẹ
+        
+        0x00CC => Some(b"\x49\xD7"), // Ì
+        0x00CD => Some(b"\x49\xDD"), // Í
+        0x1EC8 => Some(b"\x49\xD8"), // Ỉ
+        0x0128 => Some(b"\x49\xDC"), // Ĩ
+        0x1ECA => Some(b"\x49\xDE"), // Ị
+        
+        0x00D2 => Some(b"\x4F\xDF"), // Ò
+        0x00D3 => Some(b"\x4F\xE3"), // Ó
+        0x00D5 => Some(b"\x4F\xE2"), // Õ
+        0x1ECE => Some(b"\x4F\xE1"), // Ỏ
+        0x1ECC => Some(b"\x4F\xE4"), // Ọ
+        
+        0x00D9 => Some(b"\x55\xEF"), // Ù
+        0x00DA => Some(b"\x55\xF3"), // Ú
+        0x1EE6 => Some(b"\x55\xF1"), // Ủ
+        0x0168 => Some(b"\x55\xF2"), // Ũ
+        0x1EE4 => Some(b"\x55\xF4"), // Ụ
+        
+        0x00DD => Some(b"\x59\xFD"), // Ý
+        0x1EF2 => Some(b"\x59\xFA"), // Ỳ
+        0x1EF6 => Some(b"\x59\xFB"), // Ỷ
+        0x1EF8 => Some(b"\x59\xFC"), // Ỹ
+        0x1EF4 => Some(b"\x59\xFE"), // Ỵ
+        
+        // Complex vowels with tones
+        0x1EA5 => Some(b"\xCA"), // ấ
+        0x1EA7 => Some(b"\xC7"), // ầ
+        0x1EA9 => Some(b"\xC8"), // ẩ
+        0x1EAB => Some(b"\xC9"), // ẫ
+        0x1EAD => Some(b"\xCB"), // ậ
+        0x1EA4 => Some(b"\xA2\xCA"), // Ấ
+        0x1EA6 => Some(b"\xA2\xC7"), // Ầ
+        0x1EA8 => Some(b"\xA2\xC8"), // Ẩ
+        0x1EAA => Some(b"\xA2\xC9"), // Ẫ
+        0x1EAC => Some(b"\xA2\xCB"), // Ậ
+        
+        0x1EAF => Some(b"\xBE"), // ắ
+        0x1EB1 => Some(b"\xBB"), // ằ
+        0x1EB3 => Some(b"\xBC"), // ẳ
+        0x1EB5 => Some(b"\xBD"), // ẵ
+        0x1EB7 => Some(b"\xC6"), // ặ
+        0x1EAE => Some(b"\xA1\xBE"), // Ắ
+        0x1EB0 => Some(b"\xA1\xBB"), // Ằ
+        0x1EB2 => Some(b"\xA1\xBC"), // Ẳ
+        0x1EB4 => Some(b"\xA1\xBD"), // Ẵ
+        0x1EB6 => Some(b"\xA1\xC6"), // Ặ
+        
+        0x1EBF => Some(b"\xD5"), // ế
+        0x1EC1 => Some(b"\xD2"), // ề
+        0x1EC3 => Some(b"\xD3"), // ể
+        0x1EC5 => Some(b"\xD4"), // ễ
+        0x1EC7 => Some(b"\xD6"), // ệ
+        0x1EBE => Some(b"\xA3\xD5"), // Ế
+        0x1EC0 => Some(b"\xA3\xD2"), // Ề
+        0x1EC2 => Some(b"\xA3\xD3"), // Ể
+        0x1EC4 => Some(b"\xA3\xD4"), // Ễ
+        0x1EC6 => Some(b"\xA3\xD6"), // Ệ
+        
+        0x1ED1 => Some(b"\xE8"), // ố
+        0x1ED3 => Some(b"\xE5"), // ồ
+        0x1ED5 => Some(b"\xE6"), // ổ
+        0x1ED7 => Some(b"\xE7"), // ỗ
+        0x1ED9 => Some(b"\xE9"), // ộ
+        0x1ED0 => Some(b"\xA4\xE8"), // Ố
+        0x1ED2 => Some(b"\xA4\xE5"), // Ồ
+        0x1ED4 => Some(b"\xA4\xE6"), // Ổ
+        0x1ED6 => Some(b"\xA4\xE7"), // Ỗ
+        0x1ED8 => Some(b"\xA4\xE9"), // Ộ
+        
+        0x1EDB => Some(b"\xED"), // ớ
+        0x1EDD => Some(b"\xEA"), // ờ
+        0x1EDF => Some(b"\xEB"), // ở
+        0x1EE1 => Some(b"\xEC"), // ỡ
+        0x1EE3 => Some(b"\xEE"), // ợ
+        0x1EDA => Some(b"\xA5\xED"), // Ớ
+        0x1EDC => Some(b"\xA5\xEA"), // Ờ
+        0x1EDE => Some(b"\xA5\xEB"), // Ở
+        0x1EE0 => Some(b"\xA5\xEC"), // Ỡ
+        0x1EE2 => Some(b"\xA5\xEE"), // Ợ
+        
+        0x1EE9 => Some(b"\xF8"), // ứ
+        0x1EEB => Some(b"\xF5"), // ừ
+        0x1EED => Some(b"\xF6"), // ử
+        0x1EEF => Some(b"\xF7"), // ữ
+        0x1EF1 => Some(b"\xF9"), // ự
+        0x1EE8 => Some(b"\xA6\xF8"), // Ứ
+        0x1EEA => Some(b"\xA6\xF5"), // Ừ
+        0x1EEC => Some(b"\xA6\xF6"), // Ử
+        0x1EEE => Some(b"\xA6\xF7"), // Ữ
+        0x1EF0 => Some(b"\xA6\xF9"), // Ự
+        
+        _ => None,
     }
 }
 
@@ -508,7 +933,100 @@ impl Tcvn3Encoder {
         dst: &mut [u8],
         _last: bool,
     ) -> (EncoderResult, usize, usize) {
-        tcvn3_encode_from_utf8_impl(src, dst)
+        let mut source = Utf8Source::new(src);
+        let mut dest = ByteDestination::new(dst);
+        
+        'outermost: loop {
+            // Use SIMD-accelerated ASCII fast path
+            match source.copy_ascii_to_check_space_one(&mut dest) {
+                CopyAsciiResult::Stop(ret) => return ret,
+                CopyAsciiResult::GoOn((non_ascii, mut handle)) => {
+                    'middle: loop {
+                        match non_ascii {
+                            NonAscii::BmpExclAscii(bmp) => {
+                                // Try to encode Vietnamese character
+                                if let Some(tcvn3_bytes) = tcvn3_encode_bmp(bmp) {
+                                    if tcvn3_bytes.len() == 1 {
+                                        let dest_again = handle.write_one(tcvn3_bytes[0]);
+                                        match source.check_available() {
+                                            Space::Full(src_consumed) => {
+                                                return (EncoderResult::InputEmpty, src_consumed, dest_again.written());
+                                            }
+                                            Space::Available(source_handle) => {
+                                                match dest_again.check_space_one() {
+                                                    Space::Full(dst_written) => {
+                                                        return (EncoderResult::OutputFull, source_handle.consumed(), dst_written);
+                                                    }
+                                                    Space::Available(destination_handle) => {
+                                                        let (next_char, next_unread) = source_handle.read_enum();
+                                                        next_unread.commit();
+                                                        match next_char {
+                                                            Unicode::Ascii(a) => {
+                                                                destination_handle.write_one(a);
+                                                                continue 'outermost;
+                                                            }
+                                                            Unicode::NonAscii(na) => {
+                                                                handle = destination_handle;
+                                                                non_ascii = na;
+                                                                continue 'middle;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        // Two-byte sequence
+                                        match handle.check_space_two() {
+                                            Space::Full(dst_written) => {
+                                                return (EncoderResult::OutputFull, source.consumed(), dst_written);
+                                            }
+                                            Space::Available(two_handle) => {
+                                                let dest_again = two_handle.write_two(tcvn3_bytes[0], tcvn3_bytes[1]);
+                                                match source.check_available() {
+                                                    Space::Full(src_consumed) => {
+                                                        return (EncoderResult::InputEmpty, src_consumed, dest_again.written());
+                                                    }
+                                                    Space::Available(source_handle) => {
+                                                        match dest_again.check_space_one() {
+                                                            Space::Full(dst_written) => {
+                                                                return (EncoderResult::OutputFull, source_handle.consumed(), dst_written);
+                                                            }
+                                                            Space::Available(destination_handle) => {
+                                                                let (next_char, next_unread) = source_handle.read_enum();
+                                                                next_unread.commit();
+                                                                match next_char {
+                                                                    Unicode::Ascii(a) => {
+                                                                        destination_handle.write_one(a);
+                                                                        continue 'outermost;
+                                                                    }
+                                                                    Unicode::NonAscii(na) => {
+                                                                        handle = destination_handle;
+                                                                        non_ascii = na;
+                                                                        continue 'middle;
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // Unmappable character
+                                    return (EncoderResult::Unmappable(bmp as u32 as char), source.consumed(), handle.written());
+                                }
+                            }
+                            NonAscii::Astral(astral) => {
+                                // TCVN3 doesn't support astral characters
+                                return (EncoderResult::Unmappable(astral), source.consumed(), handle.written());
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     pub fn encode_from_utf16_raw(
@@ -517,95 +1035,101 @@ impl Tcvn3Encoder {
         dst: &mut [u8],
         _last: bool,
     ) -> (EncoderResult, usize, usize) {
-        tcvn3_encode_from_utf16_impl(src, dst)
-    }
-}
-
-fn tcvn3_encode_from_utf8_impl(src: &str, dst: &mut [u8]) -> (EncoderResult, usize, usize) {
-    let mut src_pos = 0usize;
-    let mut dst_pos = 0usize;
-    
-    for ch in src.chars() {
-        let unicode = ch as u32;
+        let mut source = Utf16Source::new(src);
+        let mut dest = ByteDestination::new(dst);
         
-        // ASCII pass-through
-        if unicode < 0x80 {
-            if dst_pos >= dst.len() {
-                return (EncoderResult::OutputFull, src_pos, dst_pos);
-            }
-            dst[dst_pos] = unicode as u8;
-            dst_pos += 1;
-            src_pos += ch.len_utf8();
-            continue;
-        }
-        
-        // Look up in encode table
-        let mut found = false;
-        for &(code, bytes) in TCVN3_ENCODE_TABLE {
-            if code == unicode as u16 {
-                if dst_pos + bytes.len() > dst.len() {
-                    return (EncoderResult::OutputFull, src_pos, dst_pos);
+        'outermost: loop {
+            // Use SIMD-accelerated ASCII fast path
+            match source.copy_ascii_to_check_space_one(&mut dest) {
+                CopyAsciiResult::Stop(ret) => return ret,
+                CopyAsciiResult::GoOn((non_ascii, mut handle)) => {
+                    'middle: loop {
+                        match non_ascii {
+                            NonAscii::BmpExclAscii(bmp) => {
+                                // Try to encode Vietnamese character
+                                if let Some(tcvn3_bytes) = tcvn3_encode_bmp(bmp) {
+                                    if tcvn3_bytes.len() == 1 {
+                                        let dest_again = handle.write_one(tcvn3_bytes[0]);
+                                        match source.check_available() {
+                                            Space::Full(src_consumed) => {
+                                                return (EncoderResult::InputEmpty, src_consumed, dest_again.written());
+                                            }
+                                            Space::Available(source_handle) => {
+                                                match dest_again.check_space_one() {
+                                                    Space::Full(dst_written) => {
+                                                        return (EncoderResult::OutputFull, source_handle.consumed(), dst_written);
+                                                    }
+                                                    Space::Available(destination_handle) => {
+                                                        let (next_char, next_unread) = source_handle.read_enum();
+                                                        next_unread.commit();
+                                                        match next_char {
+                                                            Unicode::Ascii(a) => {
+                                                                destination_handle.write_one(a);
+                                                                continue 'outermost;
+                                                            }
+                                                            Unicode::NonAscii(na) => {
+                                                                handle = destination_handle;
+                                                                non_ascii = na;
+                                                                continue 'middle;
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        // Two-byte sequence
+                                        match handle.check_space_two() {
+                                            Space::Full(dst_written) => {
+                                                return (EncoderResult::OutputFull, source.consumed(), dst_written);
+                                            }
+                                            Space::Available(two_handle) => {
+                                                let dest_again = two_handle.write_two(tcvn3_bytes[0], tcvn3_bytes[1]);
+                                                match source.check_available() {
+                                                    Space::Full(src_consumed) => {
+                                                        return (EncoderResult::InputEmpty, src_consumed, dest_again.written());
+                                                    }
+                                                    Space::Available(source_handle) => {
+                                                        match dest_again.check_space_one() {
+                                                            Space::Full(dst_written) => {
+                                                                return (EncoderResult::OutputFull, source_handle.consumed(), dst_written);
+                                                            }
+                                                            Space::Available(destination_handle) => {
+                                                                let (next_char, next_unread) = source_handle.read_enum();
+                                                                next_unread.commit();
+                                                                match next_char {
+                                                                    Unicode::Ascii(a) => {
+                                                                        destination_handle.write_one(a);
+                                                                        continue 'outermost;
+                                                                    }
+                                                                    Unicode::NonAscii(na) => {
+                                                                        handle = destination_handle;
+                                                                        non_ascii = na;
+                                                                        continue 'middle;
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // Unmappable character
+                                    return (EncoderResult::Unmappable(bmp as u32 as char), source.consumed(), handle.written());
+                                }
+                            }
+                            NonAscii::Astral(astral) => {
+                                // TCVN3 doesn't support astral characters
+                                return (EncoderResult::Unmappable(astral), source.consumed(), handle.written());
+                            }
+                        }
+                    }
                 }
-                dst[dst_pos..dst_pos + bytes.len()].copy_from_slice(bytes);
-                dst_pos += bytes.len();
-                found = true;
-                break;
             }
         }
-        
-        if !found {
-            // Unmappable character
-            return (EncoderResult::Unmappable(ch), src_pos, dst_pos);
-        }
-        
-        src_pos += ch.len_utf8();
     }
-    
-    (EncoderResult::InputEmpty, src_pos, dst_pos)
-}
-
-fn tcvn3_encode_from_utf16_impl(src: &[u16], dst: &mut [u8]) -> (EncoderResult, usize, usize) {
-    let mut src_pos = 0usize;
-    let mut dst_pos = 0usize;
-    
-    while src_pos < src.len() {
-        let code_unit = src[src_pos];
-        
-        // ASCII pass-through
-        if code_unit < 0x80 {
-            if dst_pos >= dst.len() {
-                return (EncoderResult::OutputFull, src_pos, dst_pos);
-            }
-            dst[dst_pos] = code_unit as u8;
-            dst_pos += 1;
-            src_pos += 1;
-            continue;
-        }
-        
-        // Look up in encode table
-        let mut found = false;
-        for &(unicode, bytes) in TCVN3_ENCODE_TABLE {
-            if unicode == code_unit {
-                if dst_pos + bytes.len() > dst.len() {
-                    return (EncoderResult::OutputFull, src_pos, dst_pos);
-                }
-                dst[dst_pos..dst_pos + bytes.len()].copy_from_slice(bytes);
-                dst_pos += bytes.len();
-                found = true;
-                break;
-            }
-        }
-        
-        if !found {
-            // Unmappable character
-            let ch = unsafe { char::from_u32_unchecked(code_unit as u32) };
-            return (EncoderResult::Unmappable(ch), src_pos, dst_pos);
-        }
-        
-        src_pos += 1;
-    }
-    
-    (EncoderResult::InputEmpty, src_pos, dst_pos)
 }
 
 #[cfg(test)]
@@ -647,7 +1171,8 @@ mod tests {
     fn test_tcvn3_encode_basic() {
         let input = "Â";
         let mut output = [0u8; 8];
-        let (result, read, written) = tcvn3_encode_from_utf8_impl(input, &mut output);
+        let mut encoder = Tcvn3Encoder;
+        let (result, read, written) = encoder.encode_from_utf8_raw(input, &mut output, true);
         assert_eq!(result, EncoderResult::InputEmpty);
         assert_eq!(read, input.len());
         assert_eq!(written, 1);
@@ -661,7 +1186,8 @@ mod tests {
         
         // Test encode
         let mut encoded = [0u8; 32];
-        let (_encode_result, _encode_read, encode_written) = tcvn3_encode_from_utf8_impl(vietnamese_text, &mut encoded);
+        let mut encoder = Tcvn3Encoder;
+        let (_encode_result, _encode_read, encode_written) = encoder.encode_from_utf8_raw(vietnamese_text, &mut encoded, true);
         
         // Test decode ngược lại
         let mut decoder = Tcvn3Decoder::new();
@@ -682,7 +1208,8 @@ mod tests {
         let sentence = "Chào bạn!";
         
         let mut encoded = [0u8; 64];
-            let (_encode_result, _encode_read, encode_written) = tcvn3_encode_from_utf8_impl(sentence, &mut encoded);
+        let mut encoder = Tcvn3Encoder;
+        let (_encode_result, _encode_read, encode_written) = encoder.encode_from_utf8_raw(sentence, &mut encoded, true);
         
         // Những ký tự ASCII như "Chao ban!" sẽ encode được
         // Những ký tự có dấu có thể không encode được nếu không có trong bảng
@@ -732,7 +1259,8 @@ mod tests {
 
         for (input, expected) in test_cases.iter() {
             let mut output = [0u8; 8];
-            let (result, _read, written) = tcvn3_encode_from_utf8_impl(input, &mut output);
+            let mut encoder = Tcvn3Encoder;
+            let (result, _read, written) = encoder.encode_from_utf8_raw(input, &mut output, true);
             
             assert_eq!(result, EncoderResult::InputEmpty, "Failed to encode '{}'", input);
             assert_eq!(&output[..written], *expected, "Wrong encoding for '{}'", input);
@@ -792,7 +1320,8 @@ mod tests {
 
         for (input, expected) in test_cases.iter() {
             let mut output = [0u8; 8];
-            let (result, _read, written) = tcvn3_encode_from_utf8_impl(input, &mut output);
+            let mut encoder = Tcvn3Encoder;
+            let (result, _read, written) = encoder.encode_from_utf8_raw(input, &mut output, true);
             
             assert_eq!(result, EncoderResult::InputEmpty, "Failed to encode '{}'", input);
             assert_eq!(&output[..written], *expected, "Wrong encoding for '{}'", input);
@@ -873,7 +1402,8 @@ mod tests {
 
         for (input, expected) in test_cases.iter() {
             let mut output = [0u8; 8];
-            let (result, _read, written) = tcvn3_encode_from_utf8_impl(input, &mut output);
+            let mut encoder = Tcvn3Encoder;
+            let (result, _read, written) = encoder.encode_from_utf8_raw(input, &mut output, true);
             
             assert_eq!(result, EncoderResult::InputEmpty, "Failed to encode '{}'", input);
             assert_eq!(&output[..written], *expected, "Wrong encoding for '{}'", input);
@@ -954,7 +1484,8 @@ mod tests {
 
         for (input, expected) in test_cases.iter() {
             let mut output = [0u8; 8];
-            let (result, _read, written) = tcvn3_encode_from_utf8_impl(input, &mut output);
+            let mut encoder = Tcvn3Encoder;
+            let (result, _read, written) = encoder.encode_from_utf8_raw(input, &mut output, true);
             
             assert_eq!(result, EncoderResult::InputEmpty, "Failed to encode '{}'", input);
             assert_eq!(&output[..written], *expected, "Wrong encoding for '{}'", input);
@@ -986,7 +1517,8 @@ mod tests {
 
         for sentence in test_sentences.iter() {
             let mut encoded = [0u8; 256];
-            let (encode_result, encode_read, encode_written) = tcvn3_encode_from_utf8_impl(sentence, &mut encoded);
+            let mut encoder = Tcvn3Encoder;
+            let (encode_result, encode_read, encode_written) = encoder.encode_from_utf8_raw(sentence, &mut encoded, true);
             
             // Một số ký tự có thể không encode được, nhưng ít nhất ASCII phải được
             assert!(encode_written > 0, "Should encode at least some characters in '{}'", sentence);
@@ -1011,7 +1543,8 @@ mod tests {
         // Test ASCII characters pass through unchanged
         let ascii_text = "Hello World 123!@#$%^&*()";
         let mut encoded = [0u8; 64];
-        let (result, read, written) = tcvn3_encode_from_utf8_impl(ascii_text, &mut encoded);
+        let mut encoder = Tcvn3Encoder;
+        let (result, read, written) = encoder.encode_from_utf8_raw(ascii_text, &mut encoded, true);
         
         assert_eq!(result, EncoderResult::InputEmpty);
         assert_eq!(read, ascii_text.len());
@@ -1036,7 +1569,8 @@ mod tests {
         
         for ch in unmappable_chars.iter() {
             let mut output = [0u8; 8];
-            let (result, _read, _written) = tcvn3_encode_from_utf8_impl(ch, &mut output);
+            let mut encoder = Tcvn3Encoder;
+            let (result, _read, _written) = encoder.encode_from_utf8_raw(ch, &mut output, true);
             
             // Should return Unmappable error
             match result {
@@ -1054,7 +1588,8 @@ mod tests {
         let text = "Việt Nam";
         let mut small_buffer = [0u8; 2]; // Intentionally small buffer
         
-        let (result, _read, _written) = tcvn3_encode_from_utf8_impl(text, &mut small_buffer);
+        let mut encoder = Tcvn3Encoder;
+        let (result, _read, _written) = encoder.encode_from_utf8_raw(text, &mut small_buffer, true);
         
         // Should return OutputFull when buffer is too small
         assert_eq!(result, EncoderResult::OutputFull);
@@ -1065,7 +1600,8 @@ mod tests {
         // Test mixed Vietnamese and ASCII content
         let mixed_text = "Hello Việt Nam 123";
         let mut encoded = [0u8; 64];
-        let (result, read, written) = tcvn3_encode_from_utf8_impl(mixed_text, &mut encoded);
+        let mut encoder = Tcvn3Encoder;
+        let (result, read, written) = encoder.encode_from_utf8_raw(mixed_text, &mut encoded, true);
         
         assert_eq!(result, EncoderResult::InputEmpty);
         assert_eq!(read, mixed_text.len());
